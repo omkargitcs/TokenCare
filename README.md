@@ -1,16 +1,45 @@
-# tokencare
+# TokenCare
 
-A new Flutter project.
+TokenCare is a Flutter and Firebase based clinic queue management app developed as a learning project. Patients can join a digital queue and track their turn, while clinics can serve patients and manage queues in real time. The project focuses on simple design and real-world use.
 
-## Getting Started
+TokenCare – Clinic Token & Queue Management App
 
-This project is a starting point for a Flutter application.
+TokenCare is a Flutter and Firebase based mobile application made as a learning project to understand real-time databases and practical app development.
+The app helps patients take digital tokens and allows clinics to manage patient queues easily.
 
-A few resources to get you started if this is your first Flutter project:
+**Features**
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+**Patient Side**
+User login using Firebase Authentication
+First-time profile registration
+Join clinic queue digitally
+View number of patients in queue
+See own position in the queue
+Get message when it’s their turn
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+**Clinic Side**
+View all patients in the queue in real time
+Serve patients one by one
+Mark patients as done
+Queue updates automatically for patients
+
+**Analytics (Clinic)**
+View daily and monthly patient statistics
+See busiest hours and days
+Basic symptom-based analysis
+
+**Technologies Used**
+Flutter
+Firebase Authentication
+Firebase Realtime Database
+
+**Objective**
+
+This project was developed to apply concepts learned in mobile application development and database management.
+The focus of this project is to keep the code simple, readable, and practical, suitable for beginners.
+
+Clinic dashboard – Completed
+
+Analytics dashboard – In progress
+
+> > > > > > > e9f7c6ba45d8d2ae194eb13ae960cd3d8e7f58d5
