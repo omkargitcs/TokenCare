@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "626658041304",
+    "project_id": "tokencare-13eab",
+    "storage_bucket": "tokencare-13eab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626658041304:android:42b97d7efaef9b3f30a6ad",
+        "android_client_info": {
+          "package_name": "com.example.tokencare"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwERYtQ-v6BXCMBW8cQkwztrQMs7l8F3w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
