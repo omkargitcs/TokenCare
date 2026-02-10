@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -10,59 +11,84 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  // Update this with your actual Clinic UID
   static const String clinicAdminUid = "PUT_CLINIC_UID_HERE";
 
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(seconds: 3), _checkAuth);
+    // We call the check directly, the delay is handled inside the function
+    _startAppSequence();
   }
 
-  void _checkAuth() {
-    final user = FirebaseAuth.instance.currentUser;
+  Future<void> _startAppSequence() async {
+    // 1. Wait for 2 seconds so the user actually sees the logo
+    await Future.delayed(const Duration(seconds: 2));
 
-    if (user == null) {
-      // Not logged in → Login
-      Navigator.pushReplacementNamed(context, '/login');
-    } else {
-      // Logged in → Decide dashboard
-      if (user.uid == clinicAdminUid) {
-        Navigator.pushReplacementNamed(context, '/clinicHome');
-      } else {
-        Navigator.pushReplacementNamed(context, '/patientHome');
+    try {
+      // 2. Check if onboarding is complete
+      final prefs = await SharedPreferences.getInstance();
+      final bool onboardingComplete =
+          prefs.getBool('onboarding_complete') ?? false;
+
+      if (!mounted) return;
+
+      if (!onboardingComplete) {
+        // Go to Introduction/Onboarding
+        Navigator.pushReplacementNamed(context, '/onboarding');
+        return;
       }
+
+      // 3. Check Authentication
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        Navigator.pushReplacementNamed(context, '/login');
+      } else {
+        // 4. Decide Dashboard
+        if (user.uid == clinicAdminUid) {
+          Navigator.pushReplacementNamed(context, '/clinicHome');
+        } else {
+          Navigator.pushReplacementNamed(context, '/patientHome');
+        }
+      }
+    } catch (e) {
+      // If something fails (like Firebase init), send them to login as fallback
+      debugPrint("Splash Error: $e");
+      if (mounted) Navigator.pushReplacementNamed(context, '/login');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF0F1218), // Midnight Black
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF00838F), Color(0xFF42A5F5)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.local_hospital, size: 72, color: Colors.white),
-            SizedBox(height: 16),
-            Text(
+          children: [
+            // Your Animated Logo
+            const Icon(Icons.bolt_rounded, size: 80, color: Color(0xFF00E5FF)),
+            const SizedBox(height: 24),
+            const Text(
               'TokenCare',
               style: TextStyle(
-                fontSize: 32,
+                fontSize: 36,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
+                letterSpacing: 2,
               ),
             ),
-            SizedBox(height: 8),
-            Text(
-              'Smart clinic queue management',
-              style: TextStyle(color: Colors.white70),
+            const SizedBox(height: 60),
+            // Use a Circular indicator so it doesn't look like a "stuck" bar
+            const SizedBox(
+              width: 30,
+              height: 30,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Color(0xFF00E5FF),
+              ),
             ),
           ],
         ),
