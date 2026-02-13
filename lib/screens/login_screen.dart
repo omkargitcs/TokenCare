@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'clinic_home_screen.dart';
+import 'package:firebase_database/firebase_database.dart'; // Added for role check
 
 class AppColors {
   static const Color backgroundBlack = Color(0xFF0F1218);
@@ -33,8 +33,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
   String? _error;
   bool _obscurePassword = true;
 
-  final String clinicEmail = 'clinic@example.com';
-  final String clinicPassword = 'clinic123';
+  // REMOVED: Static clinicEmail and clinicPassword bypass
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -47,23 +46,30 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
 
-      // Clinic Admin Bypass
-      if (email == clinicEmail && password == clinicPassword) {
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/clinicHome');
-        return;
-      }
-
-      // Normal Patient Login
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // 1. Authenticate with Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/patientHome');
+
+      // 2. Role-Based Verification
+      // We check if this user's UID exists in the 'doctors' node of the database
+      final String uid = userCredential.user!.uid;
+      final databaseRef = FirebaseDatabase.instance.ref();
+
+      DataSnapshot snapshot = await databaseRef.child('doctors/$uid').get();
+
+      if (snapshot.exists) {
+        // ✅ User is a Doctor
+        Navigator.pushReplacementNamed(context, '/clinicHome');
+      } else {
+        // 👤 User is a Patient
+        Navigator.pushReplacementNamed(context, '/patientHome');
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _error = e.message ?? "Authentication failed");
     } catch (e) {
-      setState(() => _error = "Invalid email or password");
+      setState(() => _error = "An unexpected error occurred");
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -78,6 +84,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
           height: MediaQuery.of(context).size.height,
           child: Stack(
             children: [
+              // Keep the subtle background glow but remove the floating moon
               Positioned(
                 top: -100,
                 right: -50,
@@ -86,7 +93,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                   height: 300,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.accentBlue.withOpacity(0.15),
+                    color: AppColors.accentBlue.withOpacity(0.1),
                   ),
                 ),
               ),
@@ -96,8 +103,9 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // CHANGED: Moon icon replaced with Medical Services icon
                     const Icon(
-                      Icons.shield_moon_rounded,
+                      Icons.medical_services_rounded,
                       size: 64,
                       color: AppColors.accentTeal,
                     ),
@@ -113,7 +121,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      "Login to manage your health tokens.",
+                      "Login to manage clinic tokens.",
                       style: TextStyle(
                         color: AppColors.textMuted,
                         fontSize: 16,
@@ -190,7 +198,6 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> {
                     const SizedBox(height: 32),
                     Center(
                       child: TextButton(
-                        // FIXED: This now navigates to your new RegisterScreen route
                         onPressed: () =>
                             Navigator.pushNamed(context, '/register'),
                         child: RichText(

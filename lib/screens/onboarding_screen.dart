@@ -24,8 +24,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       "title": "Skip the Waiting Room",
       "desc":
           "Join the clinic queue from the comfort of your home. No more sitting in crowded rooms.",
-      "icon":
-          "assets/queue.png", // You can use Icons.timer_outlined if no image
+      "icon": "assets/queue.png",
     },
     {
       "title": "Live Token Tracking",
@@ -34,9 +33,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       "icon": "assets/live.png",
     },
     {
-      "title": "Digital Prescriptions",
+      "title": "Time Saving",
       "desc":
-          "Access your medical history and tokens digitally. Secure, fast, and paperless.",
+          "Save Your Time by taking tokens digitally. Secure, fast, and paperless.",
       "icon": "assets/secure.png",
     },
   ];

@@ -4,9 +4,9 @@ import 'firebase_options.dart';
 
 import 'theme.dart';
 import 'screens/splash_screen.dart';
+import 'screens/onboarding_screen.dart'; // Import your new screen
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
-
 import 'screens/clinic_home_screen.dart';
 import 'screens/patient_home_screen.dart';
 
@@ -24,10 +24,14 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'TokenCare',
       debugShowCheckedModeBanner: false,
-      theme: appTheme(), // use your custom theme
+      theme: appTheme(),
+
+      // We start with Splash to check if the user is new or logged in
       initialRoute: '/splash',
+
       routes: {
         '/splash': (context) => const SplashScreen(),
+        '/onboarding': (context) => const OnboardingScreen(), // Added this
         '/login': (context) => const LoginRegisterScreen(),
         '/register': (context) => const RegisterScreen(),
         '/clinicHome': (context) => const ClinicDashboardScreen(),
@@ -36,3 +40,5 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+//service_hvoy93o
+//service_cw9tmeh

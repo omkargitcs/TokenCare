@@ -65,7 +65,7 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         title: const Text(
-          'Patient Queue',
+          'Mithibai_Clinic',
           style: TextStyle(
             fontWeight: FontWeight.bold,
             color: AppColors.textMain,
