@@ -34,6 +34,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   final DatabaseReference ref = FirebaseDatabase.instance.ref('queue');
   bool showToday = true;
 
+  // Helper to remove emojis and special characters that cause PDF "boxes"
+  String _cleanText(String? text) {
+    if (text == null) return "General";
+    return text.replaceAll(RegExp(r'[^\x00-\x7F]+'), '');
+  }
+
   // --- LOGIC: DATA CRUNCHING ENGINE ---
   Map<String, dynamic> _analyzeData(Map data) {
     int done = 0;
@@ -48,7 +54,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         value['time'] ?? value['completedAt'] ?? now.millisecondsSinceEpoch,
       );
 
-      // Filtering logic based on Toggle (Today vs Monthly)
       bool isMatch = showToday
           ? (t.day == now.day && t.month == now.month && t.year == now.year)
           : (t.month == now.month && t.year == now.year);
@@ -96,7 +101,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     var stats = _analyzeData(data);
 
-    // Header Insights
     sheetObject.appendRow([TextCellValue('CLINIC PERFORMANCE SUMMARY')]);
     sheetObject.appendRow([
       TextCellValue('Total Patients'),
@@ -122,9 +126,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       TextCellValue('Top Symptom'),
       TextCellValue(stats['topSymptom']),
     ]);
-    sheetObject.appendRow([TextCellValue('')]); // Spacer row
+    sheetObject.appendRow([TextCellValue('')]);
 
-    // Table Data
     sheetObject.appendRow([
       TextCellValue('Date'),
       TextCellValue('Time'),
@@ -151,7 +154,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     await Share.shareXFiles([XFile(filePath)], text: 'Clinic Excel Insights');
   }
 
-  // --- EXPORT: PDF WITH INSIGHTS CARDS ---
+  // --- EXPORT: PDF WITH FIXED WIDTHS & NO BOXES ---
   Future<void> _exportPDF(Map data) async {
     final pdf = pw.Document();
     var stats = _analyzeData(data);
@@ -167,13 +170,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         DateFormat('yyyy-MM-dd').format(t),
         DateFormat('hh:mm a').format(t),
         value['status']?.toString().toUpperCase() ?? 'N/A',
-        value['symptoms']?.toString() ?? 'General',
+        _cleanText(value['symptoms']?.toString()),
       ]);
     });
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
         build: (context) => [
           pw.Text(
             "Executive Clinic Report",
@@ -185,7 +189,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           pw.Divider(thickness: 2),
           pw.SizedBox(height: 15),
 
-          // Insight Cards Grid
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -200,7 +203,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             children: [
               _pdfStatBox("BUSIEST DAY", stats['peakDay']),
               _pdfStatBox("PEAK HOUR", stats['peakTime']),
-              _pdfStatBox("TOP SYMPTOM", stats['topSymptom']),
+              _pdfStatBox("TOP SYMPTOM", _cleanText(stats['topSymptom'])),
             ],
           ),
 
@@ -212,6 +215,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           pw.SizedBox(height: 10),
 
           pw.TableHelper.fromTextArray(
+            headers: tableData[0],
+            data: tableData.sublist(1),
             headerStyle: pw.TextStyle(
               fontWeight: pw.FontWeight.bold,
               color: PdfColors.white,
@@ -220,7 +225,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               color: PdfColors.blueGrey900,
             ),
             cellAlignment: pw.Alignment.centerLeft,
-            data: tableData,
+            columnWidths: {
+              0: const pw.FixedColumnWidth(85), // Date
+              1: const pw.FixedColumnWidth(85), // Time
+              2: const pw.FixedColumnWidth(70), // Status
+              3: const pw.FlexColumnWidth(), // Symptoms takes remaining space
+            },
           ),
         ],
       ),
@@ -254,7 +264,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- UI BUILDING BLOCKS ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -392,7 +401,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Widget _buildDashboardContent(Map data) {
     var stats = _analyzeData(data);
-
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -493,6 +501,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
         borderRadius: BorderRadius.circular(24),
+        // ignore: deprecated_member_use
         border: Border.all(color: color.withOpacity(0.15)),
       ),
       child: Row(

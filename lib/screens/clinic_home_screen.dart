@@ -4,7 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'login_screen.dart';
 import 'analytics_screen.dart';
 
-// Uniform Theme
+// Uniform Theme for the Clinic App
 class AppColors {
   static const Color backgroundBlack = Color(0xFF0F1218);
   static const Color surfaceDark = Color(0xFF1C212B);
@@ -23,6 +23,8 @@ class ClinicDashboardScreen extends StatefulWidget {
 
 class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
   final DatabaseReference queueRef = FirebaseDatabase.instance.ref('queue');
+
+  // --- DATABASE ACTIONS ---
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
@@ -46,8 +48,13 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
   }
 
   Future<void> _markSkipped(String key) async {
-    await queueRef.child(key).update({'status': 'skipped'});
+    await queueRef.child(key).update({
+      'status': 'skipped',
+      'completedAt': DateTime.now().millisecondsSinceEpoch,
+    });
   }
+
+  // --- UI BUILDER ---
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +96,7 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
         ],
       ),
       body: StreamBuilder<DatabaseEvent>(
-        // QUERY: Start from today's timestamp and order by time
+        // Query: Start from today and order by arrival time
         stream: queueRef.orderByChild('time').startAt(todayStart).onValue,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -104,6 +111,7 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
             return _buildEmptyState();
           }
 
+          // Convert Map to sorted List (FIFO Order)
           final patients = data.entries.map((e) {
             final map = Map<String, dynamic>.from(e.value);
             map['key'] = e.key;
@@ -124,7 +132,7 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -133,8 +141,8 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
             size: 80,
             color: AppColors.surfaceDark,
           ),
-          const SizedBox(height: 16),
-          const Text(
+          SizedBox(height: 16),
+          Text(
             "No patients for today yet",
             style: TextStyle(color: AppColors.textMuted, fontSize: 16),
           ),
@@ -146,6 +154,8 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
   Widget _buildPatientCard(Map patient, List allPatients) {
     final String status = patient['status'] ?? 'waiting';
     final String key = patient['key'];
+
+    // Global Logic: Is the doctor currently busy with anyone?
     final bool isAnyServing = allPatients.any((p) => p['status'] == 'serving');
 
     return Container(
@@ -214,7 +224,8 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
                     ),
                   ),
                 ),
-                _buildActions(status, key, isAnyServing),
+                // Pass the list to enforce FIFO order
+                _buildActions(status, key, isAnyServing, allPatients),
               ],
             ),
           ],
@@ -247,19 +258,43 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
     );
   }
 
-  Widget _buildActions(String status, String key, bool isAnyServing) {
+  Widget _buildActions(
+    String status,
+    String key,
+    bool isAnyServing,
+    List allPatients,
+  ) {
+    // FIFO ENFORCEMENT: Find the first person whose status is still 'waiting'
+    final waitingList = allPatients
+        .where((p) => p['status'] == 'waiting')
+        .toList();
+    final bool isNextInLine =
+        waitingList.isNotEmpty && waitingList.first['key'] == key;
+
     if (status == 'waiting') {
       return ElevatedButton(
-        onPressed: isAnyServing ? null : () => _servePatient(key),
+        // DISABLE logic: Only enabled if doctor is free AND this is the next person in line
+        onPressed: (isAnyServing || !isNextInLine)
+            ? null
+            : () => _servePatient(key),
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.accentBlue,
+          disabledBackgroundColor: Colors.grey.withOpacity(0.05),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: const Text("Serve"),
+        child: Text(
+          "Serve",
+          style: TextStyle(
+            color: (isAnyServing || !isNextInLine)
+                ? AppColors.textMuted
+                : Colors.white,
+          ),
+        ),
       );
     }
+
     if (status == 'serving') {
       return Row(
         children: [
@@ -283,6 +318,8 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
         ],
       );
     }
+
+    // For 'done' or 'skipped', show icon only
     return Icon(
       status == 'done' ? Icons.check_circle : Icons.do_not_disturb_on,
       color: status == 'done' ? Colors.greenAccent : AppColors.textMuted,

@@ -69,7 +69,11 @@ class _SplashScreenState extends State<SplashScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Your Animated Logo
-            const Icon(Icons.bolt_rounded, size: 80, color: Color(0xFF00E5FF)),
+            const Icon(
+              Icons.medical_services_rounded,
+              size: 80,
+              color: Color(0xFF00E5FF),
+            ),
             const SizedBox(height: 24),
             const Text(
               'TokenCare',
