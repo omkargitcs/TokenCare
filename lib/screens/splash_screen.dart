@@ -11,22 +11,22 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  // Update this with your actual Clinic UID
-  static const String clinicAdminUid = "PUT_CLINIC_UID_HERE";
+  // TIP: If you have multiple clinic staff, checking the email suffix is easier
+  // than a single UID.
+  static const String clinicEmailSuffix = "@clinic.com";
 
   @override
   void initState() {
     super.initState();
-    // We call the check directly, the delay is handled inside the function
     _startAppSequence();
   }
 
   Future<void> _startAppSequence() async {
-    // 1. Wait for 2 seconds so the user actually sees the logo
+    // 1. Branding delay
     await Future.delayed(const Duration(seconds: 2));
 
     try {
-      // 2. Check if onboarding is complete
+      // 2. Check persistent Onboarding state
       final prefs = await SharedPreferences.getInstance();
       final bool onboardingComplete =
           prefs.getBool('onboarding_complete') ?? false;
@@ -34,26 +34,27 @@ class _SplashScreenState extends State<SplashScreen> {
       if (!mounted) return;
 
       if (!onboardingComplete) {
-        // Go to Introduction/Onboarding
         Navigator.pushReplacementNamed(context, '/onboarding');
         return;
       }
 
-      // 3. Check Authentication
+      // 3. Persistent Auth Check
       final user = FirebaseAuth.instance.currentUser;
 
       if (user == null) {
+        // No active session
         Navigator.pushReplacementNamed(context, '/login');
       } else {
-        // 4. Decide Dashboard
-        if (user.uid == clinicAdminUid) {
+        // 4. Role-Based Routing
+        // We check if the email contains your clinic identifier
+        if (user.email != null && user.email!.endsWith(clinicEmailSuffix)) {
           Navigator.pushReplacementNamed(context, '/clinicHome');
         } else {
+          // It's a patient
           Navigator.pushReplacementNamed(context, '/patientHome');
         }
       }
     } catch (e) {
-      // If something fails (like Firebase init), send them to login as fallback
       debugPrint("Splash Error: $e");
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
     }
@@ -63,12 +64,11 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F1218), // Midnight Black
-      body: Container(
+      body: SizedBox(
         width: double.infinity,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Your Animated Logo
             const Icon(
               Icons.medical_services_rounded,
               size: 80,
@@ -85,7 +85,6 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             const SizedBox(height: 60),
-            // Use a Circular indicator so it doesn't look like a "stuck" bar
             const SizedBox(
               width: 30,
               height: 30,

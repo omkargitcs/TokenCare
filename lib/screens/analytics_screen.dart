@@ -34,30 +34,24 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   final DatabaseReference ref = FirebaseDatabase.instance.ref('queue');
   bool showToday = true;
 
-  // Cleans special characters for PDF generation
+  // Helper to remove emojis and special characters that cause PDF "boxes"
   String _cleanText(String? text) {
     if (text == null) return "General";
     return text.replaceAll(RegExp(r'[^\x00-\x7F]+'), '');
   }
 
-  // --- DATA ENGINE: Calculates stats and Average Consultation Time ---
+  // --- LOGIC: DATA CRUNCHING ENGINE ---
   Map<String, dynamic> _analyzeData(Map data) {
     int done = 0;
     int skipped = 0;
-    List<int> durations = [];
     Map<String, int> symptomsMap = {};
     Map<int, int> hoursMap = {};
     Map<int, int> dayOfMonthMap = {};
     DateTime now = DateTime.now();
 
     data.forEach((key, value) {
-      int checkIn = value['time'] ?? 0;
-      int finish = value['completedAt'] ?? 0;
-
       DateTime t = DateTime.fromMillisecondsSinceEpoch(
-        checkIn != 0
-            ? checkIn
-            : (finish != 0 ? finish : now.millisecondsSinceEpoch),
+        value['time'] ?? value['completedAt'] ?? now.millisecondsSinceEpoch,
       );
 
       bool isMatch = showToday
@@ -65,12 +59,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           : (t.month == now.month && t.year == now.year);
 
       if (isMatch) {
-        if (value['status'] == 'done') {
-          done++;
-          if (finish > checkIn && checkIn != 0) {
-            durations.add(finish - checkIn);
-          }
-        }
+        if (value['status'] == 'done') done++;
         if (value['status'] == 'skipped') skipped++;
 
         String s = value['symptoms'] ?? "General";
@@ -79,12 +68,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         dayOfMonthMap[t.day] = (dayOfMonthMap[t.day] ?? 0) + 1;
       }
     });
-
-    double avgMinutes = 0;
-    if (durations.isNotEmpty) {
-      double avgMs = durations.reduce((a, b) => a + b) / durations.length;
-      avgMinutes = avgMs / (1000 * 60);
-    }
 
     String topSymptom = symptomsMap.isEmpty
         ? "None"
@@ -96,36 +79,55 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       peakTime = "${hr % 12 == 0 ? 12 : hr % 12} ${hr >= 12 ? 'PM' : 'AM'}";
     }
 
+    String peakDay = dayOfMonthMap.isEmpty
+        ? "N/A"
+        : "Day ${dayOfMonthMap.entries.reduce((a, b) => a.value > b.value ? a : b).key}";
+
     return {
       'done': done,
       'skipped': skipped,
       'total': done + skipped,
-      'avgTime': avgMinutes.toStringAsFixed(1),
       'topSymptom': topSymptom,
       'peakTime': peakTime,
-      'peakDay': dayOfMonthMap.isEmpty
-          ? "N/A"
-          : "Day ${dayOfMonthMap.entries.reduce((a, b) => a.value > b.value ? a : b).key}",
+      'peakDay': peakDay,
     };
   }
 
-  // --- EXPORT: EXCEL ---
+  // --- EXPORT: EXCEL WITH INSIGHTS ---
   Future<void> _exportExcel(Map data) async {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['Clinic_Report'];
     excel.delete('Sheet1');
+
     var stats = _analyzeData(data);
 
     sheetObject.appendRow([TextCellValue('CLINIC PERFORMANCE SUMMARY')]);
     sheetObject.appendRow([
-      TextCellValue('Avg. Consultation (Mins)'),
-      TextCellValue(stats['avgTime']),
+      TextCellValue('Total Patients'),
+      IntCellValue(stats['total']),
+    ]);
+    sheetObject.appendRow([
+      TextCellValue('Attended'),
+      IntCellValue(stats['done']),
+    ]);
+    sheetObject.appendRow([
+      TextCellValue('Skipped'),
+      IntCellValue(stats['skipped']),
+    ]);
+    sheetObject.appendRow([
+      TextCellValue('Busiest Day'),
+      TextCellValue(stats['peakDay']),
+    ]);
+    sheetObject.appendRow([
+      TextCellValue('Peak Time'),
+      TextCellValue(stats['peakTime']),
     ]);
     sheetObject.appendRow([
       TextCellValue('Top Symptom'),
       TextCellValue(stats['topSymptom']),
     ]);
     sheetObject.appendRow([TextCellValue('')]);
+
     sheetObject.appendRow([
       TextCellValue('Date'),
       TextCellValue('Time'),
@@ -134,7 +136,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     ]);
 
     data.forEach((key, value) {
-      DateTime t = DateTime.fromMillisecondsSinceEpoch(value['time'] ?? 0);
+      DateTime t = DateTime.fromMillisecondsSinceEpoch(
+        value['time'] ?? value['completedAt'] ?? 0,
+      );
       sheetObject.appendRow([
         TextCellValue(DateFormat('yyyy-MM-dd').format(t)),
         TextCellValue(DateFormat('hh:mm a').format(t)),
@@ -145,20 +149,23 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     final directory = await getTemporaryDirectory();
     final filePath = "${directory.path}/Clinic_Insight_Report.xlsx";
-    await File(filePath).writeAsBytes(excel.encode()!);
-    await Share.shareXFiles([XFile(filePath)], text: 'Excel Export');
+    final file = File(filePath);
+    await file.writeAsBytes(excel.encode()!);
+    await Share.shareXFiles([XFile(filePath)], text: 'Clinic Excel Insights');
   }
 
-  // --- EXPORT: PDF ---
+  // --- EXPORT: PDF WITH FIXED WIDTHS & NO BOXES ---
   Future<void> _exportPDF(Map data) async {
     final pdf = pw.Document();
     var stats = _analyzeData(data);
+
     List<List<String>> tableData = [
       ['Date', 'Time', 'Status', 'Symptoms'],
     ];
-
     data.forEach((key, value) {
-      DateTime t = DateTime.fromMillisecondsSinceEpoch(value['time'] ?? 0);
+      DateTime t = DateTime.fromMillisecondsSinceEpoch(
+        value['time'] ?? value['completedAt'] ?? 0,
+      );
       tableData.add([
         DateFormat('yyyy-MM-dd').format(t),
         DateFormat('hh:mm a').format(t),
@@ -169,48 +176,85 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     pdf.addPage(
       pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
         build: (context) => [
           pw.Text(
             "Executive Clinic Report",
-            style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+            style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
           ),
-          pw.Divider(),
+          pw.Text(
+            "Generated on: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}",
+          ),
+          pw.Divider(thickness: 2),
+          pw.SizedBox(height: 15),
+
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
               _pdfStatBox("TOTAL PATIENTS", "${stats['total']}"),
-              _pdfStatBox("AVG TIME (MINS)", "${stats['avgTime']}"),
-              _pdfStatBox("PEAK HOUR", stats['peakTime']),
+              _pdfStatBox("ATTENDED", "${stats['done']}"),
+              _pdfStatBox("SKIPPED", "${stats['skipped']}"),
             ],
           ),
-          pw.SizedBox(height: 20),
+          pw.SizedBox(height: 10),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              _pdfStatBox("BUSIEST DAY", stats['peakDay']),
+              _pdfStatBox("PEAK HOUR", stats['peakTime']),
+              _pdfStatBox("TOP SYMPTOM", _cleanText(stats['topSymptom'])),
+            ],
+          ),
+
+          pw.SizedBox(height: 25),
+          pw.Text(
+            "Detailed Patient Logs",
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+
           pw.TableHelper.fromTextArray(
             headers: tableData[0],
             data: tableData.sublist(1),
             headerStyle: pw.TextStyle(
-              color: PdfColors.white,
               fontWeight: pw.FontWeight.bold,
+              color: PdfColors.white,
             ),
             headerDecoration: const pw.BoxDecoration(
               color: PdfColors.blueGrey900,
             ),
+            cellAlignment: pw.Alignment.centerLeft,
+            columnWidths: {
+              0: const pw.FixedColumnWidth(85), // Date
+              1: const pw.FixedColumnWidth(85), // Time
+              2: const pw.FixedColumnWidth(70), // Status
+              3: const pw.FlexColumnWidth(), // Symptoms takes remaining space
+            },
           ),
         ],
       ),
     );
+
     await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
   pw.Widget _pdfStatBox(String label, String value) {
     return pw.Container(
-      width: 160,
-      padding: const pw.EdgeInsets.all(8),
+      width: 170,
+      padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey400),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
       ),
       child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(
+            label,
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+          ),
+          pw.SizedBox(height: 4),
           pw.Text(
             value,
             style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
@@ -225,11 +269,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Scaffold(
       backgroundColor: AppColors.backgroundBlack,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         elevation: 0,
+        backgroundColor: Colors.transparent,
         title: const Text(
           'Clinic Insights',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textMain,
+          ),
         ),
         actions: [
           StreamBuilder(
@@ -237,29 +284,30 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             builder: (context, snapshot) {
               return PopupMenuButton<String>(
                 icon: const Icon(
-                  Icons.download_outlined,
+                  Icons.download_for_offline_outlined,
                   color: AppColors.accentTeal,
                 ),
                 color: AppColors.surfaceDark,
-                onSelected: (val) {
+                onSelected: (value) {
                   if (snapshot.hasData &&
                       snapshot.data!.snapshot.value != null) {
                     Map data = snapshot.data!.snapshot.value as Map;
-                    val == 'pdf' ? _exportPDF(data) : _exportExcel(data);
+                    if (value == 'excel') _exportExcel(data);
+                    if (value == 'pdf') _exportPDF(data);
                   }
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
-                    value: 'pdf',
+                    value: 'excel',
                     child: Text(
-                      "Export PDF",
+                      "Export Excel (.xlsx)",
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
                   const PopupMenuItem(
-                    value: 'excel',
+                    value: 'pdf',
                     child: Text(
-                      "Export Excel",
+                      "Export PDF (.pdf)",
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -269,70 +317,47 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
         ],
       ),
-      body: StreamBuilder(
-        stream: ref.onValue,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data?.snapshot.value == null) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.accentTeal),
-            );
-          }
-          var stats = _analyzeData(snapshot.data!.snapshot.value as Map);
-          return Column(
-            children: [
-              _buildToggleSwitch(),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: GridView.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio:
-                        1.1, // Fixed: Prevents yellow overflow line
-                    children: [
-                      _statCard(
-                        "Total Patients",
-                        stats['total'].toString(),
-                        Icons.people,
-                        AppColors.accentBlue,
-                      ),
-                      _statCard(
-                        "Avg. Mins",
-                        "${stats['avgTime']}m",
-                        Icons.timer_outlined,
-                        Colors.greenAccent,
-                      ),
-                      _statCard(
-                        "Top Case",
-                        stats['topSymptom'],
-                        Icons.medical_information,
-                        Colors.purpleAccent,
-                      ),
-                      _statCard(
-                        "Peak Time",
-                        stats['peakTime'],
-                        Icons.bolt,
-                        Colors.orangeAccent,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+      body: Column(
+        children: [
+          _buildToggleSwitch(),
+          Expanded(
+            child: StreamBuilder(
+              stream: ref.onValue,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: AppColors.accentTeal,
+                    ),
+                  );
+                }
+                if (!snapshot.hasData ||
+                    snapshot.data?.snapshot.value == null) {
+                  return const Center(
+                    child: Text(
+                      "No data available",
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                  );
+                }
+                return _buildDashboardContent(
+                  snapshot.data!.snapshot.value as Map,
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildToggleSwitch() {
     return Container(
-      margin: const EdgeInsets.all(20),
-      height: 50,
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      height: 55,
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -351,21 +376,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _toggleBtn(String t, bool active, VoidCallback tap) {
+  Widget _toggleBtn(String title, bool isActive, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
-        onTap: tap,
+        onTap: onTap,
         child: Container(
-          margin: const EdgeInsets.all(4),
+          margin: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: active ? AppColors.accentBlue : null,
-            borderRadius: BorderRadius.circular(8),
+            gradient: isActive ? AppColors.darkGradient : null,
+            borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
           child: Text(
-            t,
+            title,
             style: TextStyle(
-              color: active ? Colors.white : Colors.grey,
+              color: isActive ? Colors.white : AppColors.textMuted,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -374,36 +399,134 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _statCard(String title, String val, IconData icon, Color color) {
+  Widget _buildDashboardContent(Map data) {
+    var stats = _analyzeData(data);
+    return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.all(20),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              _wideCard(
+                "Completed Patients",
+                stats['done'].toString(),
+                Icons.check_circle_outline,
+                AppColors.accentTeal,
+              ),
+              const SizedBox(height: 16),
+              GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: 2,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: 1.1,
+                children: [
+                  _statCard(
+                    "Skipped",
+                    stats['skipped'].toString(),
+                    Icons.person_off_rounded,
+                    Colors.redAccent,
+                  ),
+                  _statCard(
+                    "Top Case",
+                    stats['topSymptom'],
+                    Icons.medical_services_outlined,
+                    Colors.purpleAccent,
+                  ),
+                  _statCard(
+                    "Peak Time",
+                    stats['peakTime'],
+                    Icons.access_time_filled,
+                    Colors.orangeAccent,
+                  ),
+                  _statCard(
+                    showToday ? "Busiest Day" : "Peak Day",
+                    stats['peakDay'],
+                    Icons.calendar_today,
+                    AppColors.accentBlue,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _wideCard(
+                "Total Registry",
+                stats['total'].toString(),
+                Icons.analytics_outlined,
+                Colors.pinkAccent,
+              ),
+            ]),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: color.withOpacity(0.1)),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: color, size: 28),
-          const SizedBox(height: 10),
-          FittedBox(
-            // Fixed: Shrinks text to fit card, removing yellow line
-            fit: BoxFit.scaleDown,
-            child: Text(
-              val,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 4),
           Text(
             title,
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _wideCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceDark,
+        borderRadius: BorderRadius.circular(24),
+        // ignore: deprecated_member_use
+        border: Border.all(color: color.withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 40),
+          const SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 14,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ],
       ),

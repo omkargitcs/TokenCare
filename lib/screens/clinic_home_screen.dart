@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'login_screen.dart';
-import 'analytics_screen.dart';
+import 'login_screen.dart'; // Ensure this file exists
+import 'analytics_screen.dart'; // Ensure this file exists
 
-// Uniform Theme for the Clinic App
+// --- THEME COLORS ---
 class AppColors {
   static const Color backgroundBlack = Color(0xFF0F1218);
   static const Color surfaceDark = Color(0xFF1C212B);
@@ -24,7 +24,56 @@ class ClinicDashboardScreen extends StatefulWidget {
 class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
   final DatabaseReference queueRef = FirebaseDatabase.instance.ref('queue');
 
-  // --- DATABASE ACTIONS ---
+  // --- LOGOUT LOGIC WITH WARNING ---
+  void _showLogoutWarning() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceDark,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            "Confirm Logout",
+            style: TextStyle(
+              color: AppColors.textMain,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: const Text(
+            "Does the clinic really want to logout? You will need to sign in again to manage the queue.",
+            style: TextStyle(color: AppColors.textMuted),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                "Cancel",
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent.withOpacity(0.8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                _logout();
+              },
+              child: const Text(
+                "Logout",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
@@ -36,6 +85,7 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
     );
   }
 
+  // --- DATABASE ACTIONS ---
   Future<void> _servePatient(String key) async {
     await queueRef.child(key).update({'status': 'serving'});
   }
@@ -54,11 +104,8 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
     });
   }
 
-  // --- UI BUILDER ---
-
   @override
   Widget build(BuildContext context) {
-    // Logic: Define the start of today to filter out old requests
     final now = DateTime.now();
     final todayStart = DateTime(
       now.year,
@@ -91,12 +138,11 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            onPressed: _logout,
+            onPressed: _showLogoutWarning, // Triggers warning
           ),
         ],
       ),
       body: StreamBuilder<DatabaseEvent>(
-        // Query: Start from today and order by arrival time
         stream: queueRef.orderByChild('time').startAt(todayStart).onValue,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -105,13 +151,12 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
             );
           }
 
-          final data = snapshot.data!.snapshot.value as Map<dynamic, dynamic>?;
+          final data = snapshot.data?.snapshot.value as Map<dynamic, dynamic>?;
 
           if (data == null || data.isEmpty) {
             return _buildEmptyState();
           }
 
-          // Convert Map to sorted List (FIFO Order)
           final patients = data.entries.map((e) {
             final map = Map<String, dynamic>.from(e.value);
             map['key'] = e.key;
@@ -122,8 +167,7 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
             padding: const EdgeInsets.all(20),
             itemCount: patients.length,
             itemBuilder: (context, index) {
-              final patient = patients[index];
-              return _buildPatientCard(patient, patients);
+              return _buildPatientCard(patients[index], patients);
             },
           );
         },
@@ -154,8 +198,6 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
   Widget _buildPatientCard(Map patient, List allPatients) {
     final String status = patient['status'] ?? 'waiting';
     final String key = patient['key'];
-
-    // Global Logic: Is the doctor currently busy with anyone?
     final bool isAnyServing = allPatients.any((p) => p['status'] == 'serving');
 
     return Container(
@@ -224,7 +266,6 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
                     ),
                   ),
                 ),
-                // Pass the list to enforce FIFO order
                 _buildActions(status, key, isAnyServing, allPatients),
               ],
             ),
@@ -264,7 +305,6 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
     bool isAnyServing,
     List allPatients,
   ) {
-    // FIFO ENFORCEMENT: Find the first person whose status is still 'waiting'
     final waitingList = allPatients
         .where((p) => p['status'] == 'waiting')
         .toList();
@@ -273,7 +313,6 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
 
     if (status == 'waiting') {
       return ElevatedButton(
-        // DISABLE logic: Only enabled if doctor is free AND this is the next person in line
         onPressed: (isAnyServing || !isNextInLine)
             ? null
             : () => _servePatient(key),
@@ -319,7 +358,6 @@ class _ClinicDashboardScreenState extends State<ClinicDashboardScreen> {
       );
     }
 
-    // For 'done' or 'skipped', show icon only
     return Icon(
       status == 'done' ? Icons.check_circle : Icons.do_not_disturb_on,
       color: status == 'done' ? Colors.greenAccent : AppColors.textMuted,

@@ -25,13 +25,10 @@ class MyApp extends StatelessWidget {
       title: 'TokenCare',
       debugShowCheckedModeBanner: false,
       theme: appTheme(),
-
-      // We start with Splash to check if the user is new or logged in
       initialRoute: '/splash',
-
       routes: {
         '/splash': (context) => const SplashScreen(),
-        '/onboarding': (context) => const OnboardingScreen(), // Added this
+        '/onboarding': (context) => const OnboardingScreen(),
         '/login': (context) => const LoginRegisterScreen(),
         '/register': (context) => const RegisterScreen(),
         '/clinicHome': (context) => const ClinicDashboardScreen(),
@@ -40,5 +37,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-//service_hvoy93o
-//service_cw9tmeh
