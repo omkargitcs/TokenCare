@@ -63,6 +63,59 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     });
   }
 
+  void _showLogoutWarning() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surfaceDark,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            "Confirm Logout",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            "Are you sure you want to logout? You might lose track of your live queue position.",
+            style: TextStyle(color: AppColors.textMuted),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                "Cancel",
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent.withOpacity(0.8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                Navigator.pop(context); // Close dialog
+                await FirebaseAuth.instance.signOut();
+                if (!mounted) return;
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/login',
+                  (route) => false,
+                );
+              },
+              child: const Text(
+                "Logout",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<String?> _askSymptoms() async {
     final Set<String> selectedSymptoms = {};
     final otherController = TextEditingController();
@@ -172,6 +225,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final todayStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).millisecondsSinceEpoch;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundBlack,
       appBar: AppBar(
@@ -184,15 +244,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (!mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                '/login',
-                (route) => false,
-              );
-            },
+            onPressed: _showLogoutWarning, // Call the new warning function
           ),
         ],
       ),
@@ -201,7 +253,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
               child: CircularProgressIndicator(color: AppColors.accentTeal),
             )
           : StreamBuilder<DatabaseEvent>(
-              stream: queueRef.onValue,
+              stream: queueRef.orderByChild('time').startAt(todayStart).onValue,
               builder: (context, snapshot) {
                 // Default Join State if no one is in queue or data is null
                 if (!snapshot.hasData ||
@@ -218,9 +270,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                         .map((e) => Map<String, dynamic>.from(e.value as Map))
                         .where(
                           (p) =>
-                              p['status'] == 'waiting' ||
-                              p['status'] == 'serving',
-                        )
+                              (p['status'] == 'waiting' ||
+                                  p['status'] == 'serving') &&
+                              (p['time'] ?? 0) >= todayStart,
+                        ) // Only today's tokens
                         .toList()
                       ..sort((a, b) => a['time'].compareTo(b['time']));
 
