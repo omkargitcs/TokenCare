@@ -34,12 +34,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   final DatabaseReference ref = FirebaseDatabase.instance.ref('queue');
   bool showToday = true;
 
+  // Cleans special characters for PDF generation
   String _cleanText(String? text) {
     if (text == null) return "General";
     return text.replaceAll(RegExp(r'[^\x00-\x7F]+'), '');
   }
 
-  // --- UPDATED LOGIC: DATA CRUNCHING ENGINE ---
+  // --- DATA ENGINE: Calculates stats and Average Consultation Time ---
   Map<String, dynamic> _analyzeData(Map data) {
     int done = 0;
     int skipped = 0;
@@ -56,9 +57,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       DateTime t = DateTime.fromMillisecondsSinceEpoch(
         checkIn != 0
             ? checkIn
-            : finish != 0
-            ? finish
-            : now.millisecondsSinceEpoch,
+            : (finish != 0 ? finish : now.millisecondsSinceEpoch),
       );
 
       bool isMatch = showToday
@@ -68,7 +67,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       if (isMatch) {
         if (value['status'] == 'done') {
           done++;
-          // Calculate duration if both timestamps exist
           if (finish > checkIn && checkIn != 0) {
             durations.add(finish - checkIn);
           }
@@ -82,7 +80,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       }
     });
 
-    // Calculate Average Time
     double avgMinutes = 0;
     if (durations.isNotEmpty) {
       double avgMs = durations.reduce((a, b) => a + b) / durations.length;
@@ -112,7 +109,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     };
   }
 
-  // --- EXPORT: EXCEL WITH AVG TIME ---
+  // --- EXPORT: EXCEL ---
   Future<void> _exportExcel(Map data) async {
     var excel = Excel.createExcel();
     Sheet sheetObject = excel['Clinic_Report'];
@@ -121,16 +118,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
     sheetObject.appendRow([TextCellValue('CLINIC PERFORMANCE SUMMARY')]);
     sheetObject.appendRow([
-      TextCellValue('Total Patients'),
-      IntCellValue(stats['total']),
-    ]);
-    sheetObject.appendRow([
       TextCellValue('Avg. Consultation (Mins)'),
       TextCellValue(stats['avgTime']),
     ]);
     sheetObject.appendRow([
-      TextCellValue('Peak Time'),
-      TextCellValue(stats['peakTime']),
+      TextCellValue('Top Symptom'),
+      TextCellValue(stats['topSymptom']),
     ]);
     sheetObject.appendRow([TextCellValue('')]);
     sheetObject.appendRow([
@@ -153,16 +146,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     final directory = await getTemporaryDirectory();
     final filePath = "${directory.path}/Clinic_Insight_Report.xlsx";
     await File(filePath).writeAsBytes(excel.encode()!);
-    await Share.shareXFiles([XFile(filePath)], text: 'Clinic Excel Insights');
+    await Share.shareXFiles([XFile(filePath)], text: 'Excel Export');
   }
 
-  // --- EXPORT: PDF WITH AVG TIME ---
+  // --- EXPORT: PDF ---
   Future<void> _exportPDF(Map data) async {
     final pdf = pw.Document();
     var stats = _analyzeData(data);
     List<List<String>> tableData = [
       ['Date', 'Time', 'Status', 'Symptoms'],
     ];
+
     data.forEach((key, value) {
       DateTime t = DateTime.fromMillisecondsSinceEpoch(value['time'] ?? 0);
       tableData.add([
@@ -232,22 +226,44 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       backgroundColor: AppColors.backgroundBlack,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        elevation: 0,
         title: const Text(
           'Clinic Insights',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
           StreamBuilder(
             stream: ref.onValue,
             builder: (context, snapshot) {
-              return IconButton(
-                icon: const Icon(Icons.download, color: AppColors.accentTeal),
-                onPressed: () {
+              return PopupMenuButton<String>(
+                icon: const Icon(
+                  Icons.download_outlined,
+                  color: AppColors.accentTeal,
+                ),
+                color: AppColors.surfaceDark,
+                onSelected: (val) {
                   if (snapshot.hasData &&
                       snapshot.data!.snapshot.value != null) {
-                    _exportPDF(snapshot.data!.snapshot.value as Map);
+                    Map data = snapshot.data!.snapshot.value as Map;
+                    val == 'pdf' ? _exportPDF(data) : _exportExcel(data);
                   }
                 },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'pdf',
+                    child: Text(
+                      "Export PDF",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'excel',
+                    child: Text(
+                      "Export Excel",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -256,19 +272,24 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       body: StreamBuilder(
         stream: ref.onValue,
         builder: (context, snapshot) {
-          if (!snapshot.hasData || snapshot.data?.snapshot.value == null)
-            return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data?.snapshot.value == null) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.accentTeal),
+            );
+          }
           var stats = _analyzeData(snapshot.data!.snapshot.value as Map);
           return Column(
             children: [
               _buildToggleSwitch(),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(20.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
                   child: GridView.count(
                     crossAxisCount: 2,
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
+                    childAspectRatio:
+                        1.1, // Fixed: Prevents yellow overflow line
                     children: [
                       _statCard(
                         "Total Patients",
@@ -343,7 +364,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           alignment: Alignment.center,
           child: Text(
             t,
-            style: TextStyle(color: active ? Colors.white : Colors.grey),
+            style: TextStyle(
+              color: active ? Colors.white : Colors.grey,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),
@@ -356,23 +380,31 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       decoration: BoxDecoration(
         color: AppColors.surfaceDark,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.1)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 30),
+          Icon(icon, color: color, size: 28),
           const SizedBox(height: 10),
-          Text(
-            val,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
+          FittedBox(
+            // Fixed: Shrinks text to fit card, removing yellow line
+            fit: BoxFit.scaleDown,
+            child: Text(
+              val,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
           ),
-          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
