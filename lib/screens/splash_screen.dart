@@ -11,8 +11,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  // TIP: If you have multiple clinic staff, checking the email suffix is easier
-  // than a single UID.
+  
   static const String clinicEmailSuffix = "@clinic.com";
 
   @override
@@ -22,11 +21,9 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _startAppSequence() async {
-    // 1. Branding delay
     await Future.delayed(const Duration(seconds: 2));
 
     try {
-      // 2. Check persistent Onboarding state
       final prefs = await SharedPreferences.getInstance();
       final bool onboardingComplete =
           prefs.getBool('onboarding_complete') ?? false;
@@ -37,20 +34,14 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacementNamed(context, '/onboarding');
         return;
       }
-
-      // 3. Persistent Auth Check
       final user = FirebaseAuth.instance.currentUser;
-
       if (user == null) {
-        // No active session
         Navigator.pushReplacementNamed(context, '/login');
       } else {
-        // 4. Role-Based Routing
-        // We check if the email contains your clinic identifier
         if (user.email != null && user.email!.endsWith(clinicEmailSuffix)) {
           Navigator.pushReplacementNamed(context, '/clinicHome');
         } else {
-          // It's a patient
+          
           Navigator.pushReplacementNamed(context, '/patientHome');
         }
       }
